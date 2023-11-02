@@ -1,8 +1,9 @@
 mod config;
+mod directory;
 
 use log::*;
 use clap::Parser;
-use std::path::PathBuf;
+use std::{path::PathBuf, env};
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -54,5 +55,17 @@ fn main() {
     let cfg = config::load(&config_path, args.first_run).unwrap();
 
     info!("Found config: {:#?}", cfg);
+
+    let search_path = if args.path.is_none() {
+        env::current_dir().unwrap()
+    } else {
+        args.path.unwrap()
+    };
+
+    let files = directory::list_files(search_path);
+
+    for file in files {
+        info!("Found: {}", file.to_str().unwrap());
+    }
 
 }
