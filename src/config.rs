@@ -1,6 +1,6 @@
 use std::{fs, error::Error, path::PathBuf, io::ErrorKind, str::FromStr};
 use inquire::{Text, CustomUserError, Autocomplete, autocompletion::Replacement};
-use log::warn;
+use log::{warn, info, error};
 use serde::{Serialize, Deserialize};
 
 #[derive(Clone, Serialize, Deserialize, Debug)]
@@ -9,18 +9,26 @@ pub struct Config {
     pub plex_library: PathBuf,
 }
 
-pub fn load(path: &PathBuf) -> Result<Config, Box<dyn Error>> {
+pub fn load(path: &PathBuf, first: bool) -> Result<Config, Box<dyn Error>> {
+    if first {
+        info!("Running first run wizard...");
+        let cfg = first_run()?;
+        save(cfg.clone(), path)?;
+        return Ok(cfg);
+    }
+
     let f = fs::read_to_string(path);
     let f = match f {
         Ok(file) => file,
         Err(e) => {
             if e.kind() == ErrorKind::NotFound {
-                warn!("Config not found, assuming first run!");
+                warn!("Config not found, running first run wizard...");
                 let cfg = first_run()?;
                 save(cfg.clone(), path)?;
                 return Ok(cfg);
             } else {
-                panic!("There was an error reading the config file!");
+                error!("There was an error reading the config file!");
+                return Err(Box::new(e));
             }
         }
     };

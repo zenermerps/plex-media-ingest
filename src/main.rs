@@ -51,7 +51,7 @@ fn main() {
 
     info!("Loading config from \"{}\"", config_path.to_str().unwrap());
 
-    let cfg = config::load(&config_path).unwrap();
+    let cfg = config::load(&config_path, args.first_run).unwrap();
 
     info!("Found config: {:#?}", cfg);
 
