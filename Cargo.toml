@@ -7,6 +7,7 @@ edition = "2021"
 
 [dependencies]
 clap = { version = "4.4.7", features = ["derive"] }
+infer = "0.15.0"
 inquire = "0.6.2"
 log = "0.4.20"
 serde = { version = "1.0.190", features = ["derive"] }

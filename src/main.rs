@@ -1,5 +1,6 @@
 mod config;
 mod directory;
+mod media;
 
 use log::*;
 use clap::Parser;
@@ -62,10 +63,13 @@ fn main() {
         args.path.unwrap()
     };
 
-    let files = directory::list_files(search_path);
+    //let files = directory::walk_path(search_path);
+    directory::search_path(search_path).unwrap();
 
-    for file in files {
+    /*for file in files.clone() {
         info!("Found: {}", file.to_str().unwrap());
-    }
+    }*/
+
+    //search_media(files).unwrap();
 
 }
