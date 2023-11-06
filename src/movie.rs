@@ -20,23 +20,14 @@ struct TMDBResponse {
 #[derive(Deserialize, Debug, Clone)]
 struct TMDBEntry {
     id: i32,
-    #[serde(alias = "name")]
     title: String,
     original_language: Option<String>,
-    media_type: String,
-    #[serde(alias = "first_air_date")]
     release_date: Option<String>,
 }
 
 impl fmt::Display for TMDBEntry {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if self.media_type == "movie" {
-            write!(f, "[MOVIE] {} ({}, {}) (ID: {})", self.title, self.release_date.clone().unwrap_or("unknown".to_string()), self.original_language.as_ref().unwrap(), self.id)
-        } else if self.media_type == "tv" {
-            write!(f, "[SHOW] {} ({}, {}) (ID: {})", self.title, self.release_date.clone().unwrap_or("unknown".to_string()), self.original_language.as_ref().unwrap(), self.id)
-        } else {
-            write!(f, "[{}] {} (ID: {})", self.media_type, self.title, self.id)
-        }
+         write!(f, "{} ({}, {}) (ID: {})", self.title, self.release_date.clone().unwrap_or("unknown".to_string()), self.original_language.as_ref().unwrap(), self.id)
     }
 }
 
@@ -85,6 +76,9 @@ fn token_valid(t: &&str) -> bool {
         t.eq_ignore_ascii_case("AAC5") ||
         t.eq_ignore_ascii_case("AAC") ||
         t.eq_ignore_ascii_case("AC3") ||
+        t.eq_ignore_ascii_case("remux") ||
+        t.eq_ignore_ascii_case("atmos") ||
+        t.eq_ignore_ascii_case("ma") ||
         t.eq_ignore_ascii_case("sample") ||             // This just removes the word sample, maybe we want to ban files with the word sample all together
         (t.starts_with('[') || t.ends_with(']')) ||
         (t.starts_with('(') || t.ends_with(')')) ||
@@ -124,7 +118,7 @@ fn lookup_media(file_name: PathBuf, mut name_tokens: Vec<String>, cfg: Config) -
         trace!("Searching on TMDB for {:#?}", name);
 
         let http_response = client
-            .get(format!("https://api.themoviedb.org/3/search/multi?query={}&include_adult=false&language=en-US&page=1", encode(name.as_str()).into_owned()))
+            .get(format!("https://api.themoviedb.org/3/search/movie?query={}&include_adult=false&language=en-US&page=1", encode(name.as_str()).into_owned()))
             .send().unwrap();
 
         response = http_response.json::<TMDBResponse>().unwrap();
