@@ -64,7 +64,7 @@ fn main() {
     };
 
     //let files = directory::walk_path(search_path);
-    directory::search_path(search_path).unwrap();
+    directory::search_path(search_path, cfg).unwrap();
 
     /*for file in files.clone() {
         info!("Found: {}", file.to_str().unwrap());

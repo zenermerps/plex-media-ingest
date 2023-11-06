@@ -1,6 +1,6 @@
 use std::{path::PathBuf, fs::{self, DirEntry}, error::Error};
 
-use crate::media::handle_media;
+use crate::{media::handle_media, config::Config};
 
 /*fn is_not_hidden(entry: &DirEntry) -> bool {
     entry
@@ -20,7 +20,7 @@ pub fn walk_path(path: PathBuf) -> Vec<PathBuf> {
     entries
 }*/
 
-pub fn search_path(path: PathBuf) -> Result<(), Box<dyn Error>> {
+pub fn search_path(path: PathBuf, cfg: Config) -> Result<(), Box<dyn Error>> {
     let entries = fs::read_dir(path)?;
     let mut files: Vec<DirEntry> = Vec::new();
     let mut dirs: Vec<DirEntry> = Vec::new();
@@ -41,7 +41,7 @@ pub fn search_path(path: PathBuf) -> Result<(), Box<dyn Error>> {
     if dirs.len() == 0 {
         // No folders present, assuming there are only distinct media files
         for file in files {
-            handle_media(file);
+            handle_media(file, cfg.clone());
         }
     }
 
