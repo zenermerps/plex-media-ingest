@@ -1,6 +1,8 @@
 use std::{path::PathBuf, fs::{self, DirEntry}, error::Error};
 
-use crate::{media::handle_media, config::Config};
+use log::trace;
+
+use crate::{movie::{handle_movie_files_and_folders, self, Move}, config::Config};
 
 /*fn is_not_hidden(entry: &DirEntry) -> bool {
     entry
@@ -20,17 +22,17 @@ pub fn walk_path(path: PathBuf) -> Vec<PathBuf> {
     entries
 }*/
 
-pub fn search_path(path: PathBuf, cfg: Config) -> Result<(), Box<dyn Error>> {
+pub fn search_path(path: PathBuf, cfg: Config) -> Result<Vec<Move>, Box<dyn Error>> {
     let entries = fs::read_dir(path)?;
     let mut files: Vec<DirEntry> = Vec::new();
-    let mut dirs: Vec<DirEntry> = Vec::new();
+    let mut folders: Vec<DirEntry> = Vec::new();
 
     // Put all files and folders in corresponding vectors
     for entry in entries {
         if let Ok(entry) = entry {
             if let Ok(file_type) = entry.file_type() {
                 if file_type.is_dir() {
-                    dirs.push(entry);
+                    folders.push(entry);
                 } else if file_type.is_file() {
                     files.push(entry);
                 }
@@ -38,14 +40,15 @@ pub fn search_path(path: PathBuf, cfg: Config) -> Result<(), Box<dyn Error>> {
         }
     }
 
-    if dirs.len() == 0 {
-        // No folders present, assuming there are only distinct media files
-        for file in files {
-            handle_media(file, cfg.clone());
-        }
-    }
+    folders.sort_by(|a, b| b.metadata().unwrap().len().cmp(&a.metadata().unwrap().len()));
+    files.sort_by(|a, b| b.metadata().unwrap().len().cmp(&a.metadata().unwrap().len()));
+    trace!("Sorted Dirs: {:#?}", folders);
+    trace!("Sorted Files: {:#?}", files);
 
-    Ok(())
+    let mut moves: Vec<movie::Move> = Vec::new();
+    moves.append(&mut handle_movie_files_and_folders(files, folders, cfg.clone()));
+
+    Ok(moves)
 }
 
 /*

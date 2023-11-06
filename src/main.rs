@@ -1,6 +1,6 @@
 mod config;
 mod directory;
-mod media;
+mod movie;
 
 use log::*;
 use clap::Parser;
@@ -20,6 +20,14 @@ struct Args {
     /// First run mode
     #[arg(short, long)]
     first_run: bool,
+
+    /// Move files rather than copying them
+    #[arg(short, long, name="move")]
+    moov: bool,
+
+    /// Look for shows instead of movies
+    #[arg(short, long)]
+    shows: bool,
 
     /// Custom config file
     #[arg(short, long, value_name = "FILE")]
@@ -64,8 +72,14 @@ fn main() {
     };
 
     //let files = directory::walk_path(search_path);
-    directory::search_path(search_path, cfg).unwrap();
+    let moves = directory::search_path(search_path, cfg).unwrap();
 
+
+    for move_file in moves {
+        info!("Moving: {:#?}: {:#?}", args.moov, move_file);
+        _ = move_file.from;
+        _ = move_file.to;
+    }
     /*for file in files.clone() {
         info!("Found: {}", file.to_str().unwrap());
     }*/
