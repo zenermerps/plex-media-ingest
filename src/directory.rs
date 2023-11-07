@@ -2,7 +2,7 @@ use std::{path::PathBuf, fs::{self, DirEntry}, error::Error};
 
 use log::trace;
 
-use crate::{movie::{handle_movie_files_and_folders, self, Move}, config::Config};
+use crate::{movie::handle_movie_files_and_folders, config::Config, media::Move, show::handle_show_files_and_folders};
 
 /*fn is_not_hidden(entry: &DirEntry) -> bool {
     entry
@@ -22,8 +22,8 @@ pub fn walk_path(path: PathBuf) -> Vec<PathBuf> {
     entries
 }*/
 
-pub fn search_path(path: PathBuf, cfg: Config) -> Result<Vec<Move>, Box<dyn Error>> {
-    let entries = fs::read_dir(path)?;
+pub fn search_path(path: PathBuf, cfg: Config, shows: bool) -> Result<Vec<Move>, Box<dyn Error>> {
+    let entries = fs::read_dir(path.clone())?;
     let mut files: Vec<DirEntry> = Vec::new();
     let mut folders: Vec<DirEntry> = Vec::new();
 
@@ -45,8 +45,12 @@ pub fn search_path(path: PathBuf, cfg: Config) -> Result<Vec<Move>, Box<dyn Erro
     trace!("Sorted Dirs: {:#?}", folders);
     trace!("Sorted Files: {:#?}", files);
 
-    let mut moves: Vec<movie::Move> = Vec::new();
-    moves.append(&mut handle_movie_files_and_folders(files, folders, cfg.clone()));
+    let mut moves: Vec<Move> = Vec::new();
+    if shows {
+        moves.append(&mut handle_show_files_and_folders(path, files, folders, cfg.clone()));
+    } else {
+        moves.append(&mut handle_movie_files_and_folders(files, folders, cfg.clone()));
+    }
 
     Ok(moves)
 }

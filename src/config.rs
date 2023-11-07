@@ -37,7 +37,7 @@ pub fn load(path: &PathBuf, first: bool) -> Result<Config, Box<dyn Error>> {
 }
 
 pub fn first_run() -> Result<Config, Box<dyn Error>> {
-    let tmdb_key = Text::new("Enter your TMDB API Key:")
+    let tmdb_key = Text::new("Enter your TMDB API Read Access Token:")
     .with_help_message("The API key can be found at https://www.themoviedb.org/settings/api (you must be logged in).")
     .prompt();
 

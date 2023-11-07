@@ -1,10 +1,13 @@
 mod config;
 mod directory;
 mod movie;
+mod show;
+mod media;
 
 use log::*;
 use clap::Parser;
-use std::{path::PathBuf, env};
+use std::{path::PathBuf, env, fs};
+use inline_colorization::*;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -22,8 +25,12 @@ struct Args {
     first_run: bool,
 
     /// Move files rather than copying them
-    #[arg(short, long, name="move")]
+    #[arg(short, long="move")]
     moov: bool,
+
+    /// Output moves/copies instead of actually doing them
+    #[arg(short, long)]
+    dry_run: bool,
 
     /// Look for shows instead of movies
     #[arg(short, long)]
@@ -71,15 +78,48 @@ fn main() {
         args.path.unwrap()
     };
 
-    //let files = directory::walk_path(search_path);
-    let moves = directory::search_path(search_path, cfg).unwrap();
-
+    let moves = directory::search_path(search_path, cfg, args.shows).unwrap();
 
     for move_file in moves {
-        info!("Moving: {:#?}: {:#?}", args.moov, move_file);
-        _ = move_file.from;
-        _ = move_file.to;
+        if args.moov {
+            // Move files instead of copying
+            println!("Moving {style_bold}{color_red}{}{color_reset}{style_reset} -> {style_bold}{color_green}{}{color_reset}{style_reset}", move_file.from.display(), move_file.to.display());
+            if args.dry_run {
+                continue;
+            }
+            fs::create_dir_all(move_file.to.parent().unwrap()).unwrap();
+            match fs::rename(&move_file.from, &move_file.to) {
+                Ok(_) => continue,
+                Err(e) => {
+                    warn!("Can not rename, error {:#?}, copying and deleting instead", e);
+                    match fs::copy(&move_file.from, &move_file.to) {
+                        Ok(_) => _ = fs::remove_file(&move_file.from),
+                        Err(e) => {
+                            error!("Copy also failed with error {:#?}", e);
+                            continue;
+                        }
+                    }
+                }
+            }
+        } else {
+            // Copy files
+            println!("Copying {style_bold}{color_red}{}{color_reset}{style_reset} -> {style_bold}{color_green}{}{color_reset}{style_reset}", move_file.from.display(), move_file.to.display());
+            if args.dry_run {
+                continue;
+            }
+            fs::create_dir_all(move_file.to.parent().unwrap()).unwrap();
+            match fs::copy(&move_file.from, &move_file.to) {
+                Ok(_) => _ = (),
+                Err(e) => {
+                    error!("Copy failed with error {:#?}", e);
+                    continue;
+                }
+            }
+        }
     }
+
+    //let files = directory::walk_path(search_path);
+    
     /*for file in files.clone() {
         info!("Found: {}", file.to_str().unwrap());
     }*/

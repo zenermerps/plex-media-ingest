@@ -1,4 +1,4 @@
-use std::{path::PathBuf, error::Error, io::Read, fs::{File, DirEntry}, cmp, fmt};
+use std::{path::PathBuf, fs::DirEntry, fmt, time::Duration};
 use infer;
 use inquire::{Select, Text, Confirm};
 use log::{info, warn, error, trace, debug};
@@ -9,7 +9,7 @@ use inline_colorization::*;
 use sanitise_file_name::sanitise;
 use walkdir::WalkDir;
 
-use crate::{config::Config, directory::search_path};
+use crate::{config::Config, directory::search_path, media::{self, Move, get_file_header}};
 
 #[derive(Deserialize, Debug)]
 struct TMDBResponse {
@@ -31,74 +31,7 @@ impl fmt::Display for TMDBEntry {
     }
 }
 
-#[derive(Debug)]
-pub struct Move {
-    pub from: PathBuf,
-    pub to: PathBuf
-}
-
-fn get_file_header(path: PathBuf) -> Result<Vec<u8>, Box<dyn Error>> {
-    let f = File::open(path)?;
-
-    let limit = f
-        .metadata()
-        .map(|m| cmp::min(m.len(), 8192) as usize + 1)
-        .unwrap_or(0);
-    let mut bytes = Vec::with_capacity(limit);
-    f.take(8192).read_to_end(&mut bytes)?;
-    Ok(bytes)
-}
-
-fn token_valid(t: &&str) -> bool {
-    if
-        t.eq_ignore_ascii_case("dvd") ||
-        t.eq_ignore_ascii_case("bluray") ||
-        t.eq_ignore_ascii_case("webrip") ||
-        t.eq_ignore_ascii_case("youtube") ||
-        t.eq_ignore_ascii_case("download") ||
-        t.eq_ignore_ascii_case("web") ||
-        t.eq_ignore_ascii_case("uhd") ||
-        t.eq_ignore_ascii_case("hd") ||
-        t.eq_ignore_ascii_case("tv") ||
-        t.eq_ignore_ascii_case("tvrip") ||
-        t.eq_ignore_ascii_case("1080p") ||
-        t.eq_ignore_ascii_case("1080i") ||
-        t.eq_ignore_ascii_case("2160p") ||
-        t.eq_ignore_ascii_case("x264") ||
-        t.eq_ignore_ascii_case("x265") ||
-        t.eq_ignore_ascii_case("h265") ||
-        t.eq_ignore_ascii_case("dts") ||
-        t.eq_ignore_ascii_case("hevc") ||
-        t.eq_ignore_ascii_case("10bit") ||
-        t.eq_ignore_ascii_case("12bit") ||
-        t.eq_ignore_ascii_case("hdr") ||
-        t.eq_ignore_ascii_case("xvid") ||
-        t.eq_ignore_ascii_case("AAC5") ||
-        t.eq_ignore_ascii_case("AAC") ||
-        t.eq_ignore_ascii_case("AC3") ||
-        t.eq_ignore_ascii_case("remux") ||
-        t.eq_ignore_ascii_case("atmos") ||
-        t.eq_ignore_ascii_case("ma") ||
-        t.eq_ignore_ascii_case("sample") ||             // This just removes the word sample, maybe we want to ban files with the word sample all together
-        (t.starts_with('[') || t.ends_with(']')) ||
-        (t.starts_with('(') || t.ends_with(')')) ||
-        (t.starts_with('{') || t.ends_with('}'))
-    {
-        return false;
-    }
-    true
-}
-
-fn tokenize_media_name(file_name: String) -> Vec<String> {
-    let mut tokens: Vec<String> = file_name.split(&['-', ' ', ':', '@', '.'][..]).filter(|t| token_valid(t)).map(String::from).collect();
-    trace!("Tokens are: {:#?}", tokens);
-
-    // Remove last token (file ext)
-    _ = tokens.pop();
-    tokens
-}
-
-fn lookup_media(file_name: PathBuf, mut name_tokens: Vec<String>, cfg: Config) -> Option<TMDBEntry> {
+fn lookup_movie(file_name: PathBuf, mut name_tokens: Vec<String>, cfg: Config) -> Option<TMDBEntry> {
     let mut h = HeaderMap::new();
     h.insert("Accept", HeaderValue::from_static("application/json"));
     h.insert("Authorization", HeaderValue::from_str(format!("Bearer {}", cfg.tmdb_key).as_str()).unwrap());
@@ -119,9 +52,15 @@ fn lookup_media(file_name: PathBuf, mut name_tokens: Vec<String>, cfg: Config) -
 
         let http_response = client
             .get(format!("https://api.themoviedb.org/3/search/movie?query={}&include_adult=false&language=en-US&page=1", encode(name.as_str()).into_owned()))
-            .send().unwrap();
+            .timeout(Duration::from_secs(120))
+            .send();
 
-        response = http_response.json::<TMDBResponse>().unwrap();
+        if http_response.is_err() {
+            warn!("Request error: {:#?}", http_response.unwrap_err());
+            return None;
+        }
+
+        response = http_response.unwrap().json::<TMDBResponse>().unwrap();
         trace!("TMDB Reponse: {:#?}", response);
 
         if response.total_results == 0 {
@@ -133,7 +72,7 @@ fn lookup_media(file_name: PathBuf, mut name_tokens: Vec<String>, cfg: Config) -
 
     let options = response.results;
 
-    let ans = Select::new(format!("Select movie or show that matches the file {style_bold}{}{style_reset}:", file_name.display()).as_str(), options).prompt();
+    let ans = Select::new(format!("Select movie that matches the file {style_bold}{}{style_reset}:", file_name.display()).as_str(), options).prompt();
     match ans {
         Ok(choice) => {
             debug!("Selected: {:#?}", choice);
@@ -146,21 +85,27 @@ fn lookup_media(file_name: PathBuf, mut name_tokens: Vec<String>, cfg: Config) -
     }
 }
 
-fn video_file_handler(entry: PathBuf, cfg: Config) -> Option<TMDBEntry> {
-    info!("Found video file: {:#?}", entry);
+fn movie_video_file_handler(entry: PathBuf, cfg: Config) -> Option<TMDBEntry> {
+    info!("Found movie video file: {:#?}", entry);
 
     let file_name = entry.file_name().unwrap_or_default();
     trace!("File name is: {:#?}", file_name);
 
-    let name_tokens = tokenize_media_name(file_name.to_str().unwrap_or_default().to_string());
+    let mut name_tokens = media::tokenize_media_name(file_name.to_str().unwrap_or_default().to_string());
     
-    lookup_media(entry, name_tokens, cfg)
+    // Remove last token (file ext)
+    _ = name_tokens.pop();
+    
+    lookup_movie(entry, name_tokens, cfg)
 }
 
 pub fn handle_movie_files_and_folders(files: Vec<DirEntry>, folders: Vec<DirEntry>, cfg: Config) -> Vec<Move> {
     let mut moves: Vec<Move> = Vec::new();
     let mut primary_media: Option<TMDBEntry> = None; // Assuming first file (biggest file) is primary media, store the information of this, for the rest, do lazy matching for extra content/subs and so on
     for file in files {
+        if file.path().to_str().unwrap_or_default().to_string().to_ascii_lowercase().contains("sample") {
+            continue;
+        }
         check_movie_file(file.path(), &mut primary_media, &cfg, &mut moves);
     }
     match primary_media {
@@ -171,6 +116,9 @@ pub fn handle_movie_files_and_folders(files: Vec<DirEntry>, folders: Vec<DirEntr
                     match entry {
                         Ok(entry) => {
                             if entry.file_type().is_file() {
+                                if entry.path().to_str().unwrap_or_default().to_string().to_ascii_lowercase().contains("sample") {
+                                    continue;
+                                }
                                 check_movie_file(entry.into_path(), &mut primary_media, &cfg, &mut moves);
                             }
                         },
@@ -185,7 +133,7 @@ pub fn handle_movie_files_and_folders(files: Vec<DirEntry>, folders: Vec<DirEntr
         None => {
             // There is no primary media yet, try every folder as main folder
             for folder in folders {
-                moves.append(&mut search_path(folder.path(), cfg.clone()).unwrap());
+                moves.append(&mut search_path(folder.path(), cfg.clone(), false).unwrap());
             }
         }
     }
@@ -201,12 +149,17 @@ fn check_movie_file(file: PathBuf, primary_media: &mut Option<TMDBEntry>, cfg: &
                 match primary_media.as_ref() {
                     None => {
                         // No primary media found yet, look up media on TMDB
-                        match video_file_handler(file.clone(), cfg.clone()) {
+                        match movie_video_file_handler(file.clone(), cfg.clone()) {
                             Some(meta) => {
                                 *primary_media = Some(meta.clone());
                                 let original_path = file;
                                 let ext = original_path.extension().unwrap_or_default();
-                                let new_path = cfg.plex_library.join(format!("Movies/{0} {{tmdb-{1}}}/{0} {{tmdb-{1}}}.{2}", sanitise(meta.title.as_str()), meta.id, ext.to_str().unwrap_or_default()));
+                                let year: String;
+                                match meta.release_date.unwrap_or_default().split('-').nth(0) {
+                                    Some(y) => year = format!("({}) ", y),
+                                    None => year = "".to_string()
+                                }
+                                let new_path = cfg.plex_library.join(format!("Movies/{0} {3}{{tmdb-{1}}}/{0} {3}{{tmdb-{1}}}.{2}", sanitise(meta.title.as_str()), meta.id, ext.to_str().unwrap_or_default(), year));
                                 moves.push(Move { from: original_path, to: new_path });
                             },
                             None => {
@@ -233,7 +186,12 @@ fn check_movie_file(file: PathBuf, primary_media: &mut Option<TMDBEntry>, cfg: &
                                         Ok(edition_name) => {
                                             let original_path = file;
                                             let ext = original_path.extension().unwrap_or_default();
-                                            let new_path = cfg.plex_library.join(format!("Movies/{0} {{tmdb-{1}}}/{0} {{tmdb-{1}}} {{edition-{3}}}.{2}", sanitise(primary_media.title.as_str()), primary_media.id, ext.to_str().unwrap_or_default(), edition_name));
+                                            let year: String;
+                                            match primary_media.clone().release_date.unwrap_or_default().split('-').nth(0) {
+                                                Some(y) => year = format!("({}) ", y),
+                                                None => year = "".to_string()
+                                            }
+                                            let new_path = cfg.plex_library.join(format!("Movies/{0} {4}{{tmdb-{1}}}/{0} {4}{{tmdb-{1}}} {{edition-{3}}}.{2}", sanitise(primary_media.title.as_str()), primary_media.id, ext.to_str().unwrap_or_default(), edition_name, year));
                                             moves.push(Move { from: original_path, to: new_path });
                                             return;
                                         },
@@ -249,7 +207,12 @@ fn check_movie_file(file: PathBuf, primary_media: &mut Option<TMDBEntry>, cfg: &
                                     Ok(description) => {
                                         let original_path = file;
                                         let ext = original_path.extension().unwrap_or_default();
-                                        let new_path = cfg.plex_library.join(format!("Movies/{0} {{tmdb-{1}}}/{3}/{4}.{2}", sanitise(primary_media.title.as_str()), primary_media.id, ext.to_str().unwrap_or_default(), choice, description));
+                                        let year: String;
+                                        match primary_media.clone().release_date.unwrap_or_default().split('-').nth(0) {
+                                            Some(y) => year = format!("({}) ", y),
+                                            None => year = "".to_string()
+                                        }
+                                        let new_path = cfg.plex_library.join(format!("Movies/{0} {5}{{tmdb-{1}}}/{3}/{4}.{2}", sanitise(primary_media.title.as_str()), primary_media.id, ext.to_str().unwrap_or_default(), choice, description, year));
                                         moves.push(Move { from: original_path, to: new_path });
                                         return;
                                     },
@@ -293,7 +256,12 @@ fn check_movie_file(file: PathBuf, primary_media: &mut Option<TMDBEntry>, cfg: &
                                             // Forced
                                             let original_path = file;
                                             let ext = original_path.extension().unwrap_or_default();
-                                            let new_path = cfg.plex_library.join(format!("Movies/{0} {{tmdb-{1}}}/{0} {{tmdb-{1}}}.{3}.forced.{2}", sanitise(primary_media.as_ref().unwrap().title.as_str()), primary_media.as_ref().unwrap().id, ext.to_str().unwrap_or_default(), lang_code.to_ascii_lowercase()));
+                                            let year: String;
+                                            match primary_media.clone().unwrap().release_date.unwrap_or_default().split('-').nth(0) {
+                                                Some(y) => year = format!("({}) ", y),
+                                                None => year = "".to_string()
+                                            }
+                                            let new_path = cfg.plex_library.join(format!("Movies/{0} {4}{{tmdb-{1}}}/{0} {{tmdb-{1}}}.{3}.forced.{2}", sanitise(primary_media.as_ref().unwrap().title.as_str()), primary_media.as_ref().unwrap().id, ext.to_str().unwrap_or_default(), lang_code.to_ascii_lowercase(), year));
                                             moves.push(Move { from: original_path, to: new_path });
                                             return;
                                         },
@@ -301,7 +269,12 @@ fn check_movie_file(file: PathBuf, primary_media: &mut Option<TMDBEntry>, cfg: &
                                             // Non-forced
                                             let original_path = file;
                                             let ext = original_path.extension().unwrap_or_default();
-                                            let new_path = cfg.plex_library.join(format!("Movies/{0} {{tmdb-{1}}}/{0} {{tmdb-{1}}}.{3}.{2}", sanitise(primary_media.as_ref().unwrap().title.as_str()), primary_media.as_ref().unwrap().id, ext.to_str().unwrap_or_default(), lang_code.to_ascii_lowercase()));
+                                            let year: String;
+                                            match primary_media.clone().unwrap().release_date.unwrap_or_default().split('-').nth(0) {
+                                                Some(y) => year = format!("({}) ", y),
+                                                None => year = "".to_string()
+                                            }
+                                            let new_path = cfg.plex_library.join(format!("Movies/{0} {4}{{tmdb-{1}}}/{0} {{tmdb-{1}}}.{3}.{2}", sanitise(primary_media.as_ref().unwrap().title.as_str()), primary_media.as_ref().unwrap().id, ext.to_str().unwrap_or_default(), lang_code.to_ascii_lowercase(), year));
                                             moves.push(Move { from: original_path, to: new_path });
                                             return;
                                         },
