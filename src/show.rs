@@ -12,12 +12,14 @@ use regex::RegexBuilder;
 
 use crate::{config::Config, media::{Move, self, get_file_header}, directory::search_path};
 
+// Struct to hold the TMDB API response
 #[derive(Deserialize, Debug)]
 struct TMDBResponse {
     results: Vec<TMDBEntry>,
     total_results: i32
 }
 
+// Struct to hold a show from the TMDB API response
 #[derive(Deserialize, Debug, Clone)]
 struct TMDBEntry {
     id: i32,
@@ -26,12 +28,14 @@ struct TMDBEntry {
     first_air_date: Option<String>,
 }
 
+// Display implementation for the inquire selection dialog
 impl fmt::Display for TMDBEntry {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
          write!(f, "{} ({}, {}) (ID: {})", self.name, self.first_air_date.clone().unwrap_or("unknown".to_string()), self.original_language.as_ref().unwrap(), self.id)
     }
 }
 
+// Use directory name to find out show name, as opposed to file name for movies
 fn check_show_name(entry: PathBuf, cfg: Config) -> Option<TMDBEntry> {
     info!("Found folder: {:#?}", entry);
 
@@ -42,6 +46,7 @@ fn check_show_name(entry: PathBuf, cfg: Config) -> Option<TMDBEntry> {
     lookup_show(entry, name_tokens, cfg)
 }
 
+// Look up show on the TMDB API
 fn lookup_show(folder_name: PathBuf, mut name_tokens: Vec<String>, cfg: Config) -> Option<TMDBEntry> {
     if name_tokens.first().unwrap_or(&"".to_string()).eq_ignore_ascii_case("season") {
         // Is a season folder most likely, skip useless TMDB requests
@@ -100,14 +105,13 @@ fn lookup_show(folder_name: PathBuf, mut name_tokens: Vec<String>, cfg: Config) 
     }
 }
 
+// Handler for the sorted vectors of files and folders, gets called recursively for subfolders, if no primary media can be found
 pub fn handle_show_files_and_folders(directory: PathBuf, files: Vec<DirEntry>, folders: Vec<DirEntry>, cfg: Config) -> Vec<Move> {
     let mut moves: Vec<Move> = Vec::new();
     let mut primary_media: Option<TMDBEntry>;
     
     // Check current directory for possible name
     primary_media = check_show_name(directory, cfg.clone());
-    
-      //check_show_file(file.path(), &mut primary_media, &cfg, &mut moves);
     match primary_media {
         Some(_) => {
             // There is already primary media, check files and directories for more media for same show
@@ -148,6 +152,7 @@ pub fn handle_show_files_and_folders(directory: PathBuf, files: Vec<DirEntry>, f
     moves
 }
 
+// Check files for episodes or subtitles, show required inquire dialoges
 fn check_show_file(file: PathBuf, primary_media: &mut Option<TMDBEntry>, cfg: &Config, moves: &mut Vec<Move>) {
     trace!("Checking {:#?}", file);
     match get_file_header(file.clone()) {

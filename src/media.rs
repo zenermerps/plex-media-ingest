@@ -2,12 +2,14 @@ use std::{path::PathBuf, error::Error, fs::File, cmp, io::Read};
 
 use log::trace;
 
+// Struct holding two paths for the move/copy command
 #[derive(Debug, Clone)]
 pub struct Move {
     pub from: PathBuf,
     pub to: PathBuf
 }
 
+// Extract the header/magic bytes from a file
 pub fn get_file_header(path: PathBuf) -> Result<Vec<u8>, Box<dyn Error>> {
     let f = File::open(path)?;
 
@@ -20,6 +22,7 @@ pub fn get_file_header(path: PathBuf) -> Result<Vec<u8>, Box<dyn Error>> {
     Ok(bytes)
 }
 
+// Check validity of a file-/foldername token (strip common torrent parts)
 fn token_valid(t: &&str) -> bool {
     if
         t.eq_ignore_ascii_case("dvd") ||
@@ -64,6 +67,7 @@ fn token_valid(t: &&str) -> bool {
     true
 }
 
+// Separate file-/foldernames into a vector of tokens, stripping of whitespace or other separation characters
 pub fn tokenize_media_name(file_name: String) -> Vec<String> {
     let tokens: Vec<String> = file_name.split(&['-', ' ', ':', '@', '.'][..]).filter(|t| token_valid(t)).map(String::from).collect();
     trace!("Tokens are: {:#?}", tokens);

@@ -4,24 +4,8 @@ use log::trace;
 
 use crate::{movie::handle_movie_files_and_folders, config::Config, media::Move, show::handle_show_files_and_folders};
 
-/*fn is_not_hidden(entry: &DirEntry) -> bool {
-    entry
-        .file_name()
-        .to_str()
-        .map(|s| entry.depth() == 0 || (!s.starts_with(".") && !s.starts_with("@"))) // todo!: Allow ignored chars to be configured, here, @ is QNAP special folders
-        .unwrap_or(false)
-}
-
-pub fn walk_path(path: PathBuf) -> Vec<PathBuf> {
-    let mut entries: Vec<PathBuf> = vec![];
-    WalkDir::new(path)
-        .into_iter()
-        .filter_entry(|e| is_not_hidden(e))
-        .filter_map(|v| v.ok())
-        .for_each(|x| entries.push(x.into_path()));
-    entries
-}*/
-
+// Search a given path for movies or shows
+// TODO: Add support for single file as well
 pub fn search_path(path: PathBuf, cfg: Config, shows: bool) -> Result<Vec<Move>, Box<dyn Error>> {
     let entries = fs::read_dir(path.clone())?;
     let mut files: Vec<DirEntry> = Vec::new();
@@ -40,6 +24,7 @@ pub fn search_path(path: PathBuf, cfg: Config, shows: bool) -> Result<Vec<Move>,
         }
     }
 
+    // Sort the files and directory vectors by size, so the  main movie file (the biggest usually) is the first
     folders.sort_by(|a, b| b.metadata().unwrap().len().cmp(&a.metadata().unwrap().len()));
     files.sort_by(|a, b| b.metadata().unwrap().len().cmp(&a.metadata().unwrap().len()));
     trace!("Sorted Dirs: {:#?}", folders);
@@ -47,14 +32,17 @@ pub fn search_path(path: PathBuf, cfg: Config, shows: bool) -> Result<Vec<Move>,
 
     let mut moves: Vec<Move> = Vec::new();
     if shows {
+        // Find shows in directory (only one show per run supported right now)
         moves.append(&mut handle_show_files_and_folders(path, files, folders, cfg.clone()));
     } else {
+        // Find movies in directory or subdirectories, find extras
         moves.append(&mut handle_movie_files_and_folders(files, folders, cfg.clone()));
     }
 
     Ok(moves)
 }
 
+// Some lgecy documentation, rough description of the algorithm
 /*
 Look at current directory:
     Only directories, no media files ->

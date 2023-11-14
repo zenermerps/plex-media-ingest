@@ -47,6 +47,7 @@ struct Args {
 fn main() {
     let args = Args::parse();
 
+    // Initialise error logger to use `stderr` and verbosity/quiet mode from command line flags
     stderrlog::new()
         .module(module_path!())
         .quiet(args.quiet)
@@ -54,12 +55,7 @@ fn main() {
         .init()
         .unwrap();
 
-    trace!("trace message");
-    debug!("debug message");
-    info!("info message");
-    warn!("warn message");
-    error!("error message");
-
+    // Set config path config to home folder, or if provided to specified file
     let config_path = if args.config.is_none() {
         PathBuf::from(std::env::var("HOME").unwrap()).join(".plex-media-ingest").join("config.json")
     } else {
@@ -68,16 +64,19 @@ fn main() {
 
     info!("Loading config from \"{}\"", config_path.to_str().unwrap());
 
+    // Read config, or run first run wizard and write config, if none can be found
     let cfg = config::load(&config_path, args.first_run).unwrap();
 
     info!("Found config: {:#?}", cfg);
 
+    // Use either provided or current path as search path for movies/shows
     let search_path = if args.path.is_none() {
         env::current_dir().unwrap()
     } else {
         args.path.unwrap()
     };
 
+    // Search path and put everything in vector to hold all the file moves (or copies)
     let moves = directory::search_path(search_path, cfg, args.shows).unwrap();
 
     for move_file in moves {
@@ -117,13 +116,4 @@ fn main() {
             }
         }
     }
-
-    //let files = directory::walk_path(search_path);
-    
-    /*for file in files.clone() {
-        info!("Found: {}", file.to_str().unwrap());
-    }*/
-
-    //search_media(files).unwrap();
-
 }

@@ -3,20 +3,24 @@ use inquire::{Text, CustomUserError, Autocomplete, autocompletion::Replacement};
 use log::{warn, info, error};
 use serde::{Serialize, Deserialize};
 
+// Struct to hold the config values
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct Config {
     pub tmdb_key: String,
     pub plex_library: PathBuf,
 }
 
+// Load config, or trigger first run wizard
 pub fn load(path: &PathBuf, first: bool) -> Result<Config, Box<dyn Error>> {
     if first {
+        // If first run wizard should be re-run don't bother with the existing config, run wizard and save it
         info!("Running first run wizard...");
         let cfg = first_run()?;
         save(cfg.clone(), path)?;
         return Ok(cfg);
     }
 
+    // Find and read config file, deserialise it into a config object
     let f = fs::read_to_string(path);
     let f = match f {
         Ok(file) => file,
@@ -36,6 +40,7 @@ pub fn load(path: &PathBuf, first: bool) -> Result<Config, Box<dyn Error>> {
     Ok(cfg)
 }
 
+// First run wizard
 pub fn first_run() -> Result<Config, Box<dyn Error>> {
     let tmdb_key = Text::new("Enter your TMDB API Read Access Token:")
     .with_help_message("The API key can be found at https://www.themoviedb.org/settings/api (you must be logged in).")
@@ -64,6 +69,7 @@ pub fn first_run() -> Result<Config, Box<dyn Error>> {
     Ok(Config { tmdb_key: tmdb_key, plex_library:  plex_library})
 }
 
+// Serialise and save config object to disk
 pub fn save(cfg: Config, path: &PathBuf) -> Result<(), Box<dyn Error>> {
     let serialized = serde_json::to_string_pretty(&cfg)?;
     fs::create_dir_all(path.parent().unwrap())?;

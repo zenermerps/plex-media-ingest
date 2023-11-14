@@ -11,12 +11,14 @@ use walkdir::WalkDir;
 
 use crate::{config::Config, directory::search_path, media::{self, Move, get_file_header}};
 
+// Struct to hold the TMDB API response
 #[derive(Deserialize, Debug)]
 struct TMDBResponse {
     results: Vec<TMDBEntry>,
     total_results: i32
 }
 
+// Struct to hold a movie from the TMDB API response
 #[derive(Deserialize, Debug, Clone)]
 struct TMDBEntry {
     id: i32,
@@ -25,12 +27,14 @@ struct TMDBEntry {
     release_date: Option<String>,
 }
 
+// Display implementation for the inquire selection dialog
 impl fmt::Display for TMDBEntry {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
          write!(f, "{} ({}, {}) (ID: {})", self.title, self.release_date.clone().unwrap_or("unknown".to_string()), self.original_language.as_ref().unwrap(), self.id)
     }
 }
 
+// Look up movie on the TMDB API
 fn lookup_movie(file_name: PathBuf, mut name_tokens: Vec<String>, cfg: Config) -> Option<TMDBEntry> {
     let mut h = HeaderMap::new();
     h.insert("Accept", HeaderValue::from_static("application/json"));
@@ -85,6 +89,7 @@ fn lookup_movie(file_name: PathBuf, mut name_tokens: Vec<String>, cfg: Config) -
     }
 }
 
+// Handle single video file
 fn movie_video_file_handler(entry: PathBuf, cfg: Config) -> Option<TMDBEntry> {
     info!("Found movie video file: {:#?}", entry);
 
@@ -99,6 +104,7 @@ fn movie_video_file_handler(entry: PathBuf, cfg: Config) -> Option<TMDBEntry> {
     lookup_movie(entry, name_tokens, cfg)
 }
 
+// Handler for the sorted vectors of files and folders, gets called recursively for subfolders, if no primary media can be found
 pub fn handle_movie_files_and_folders(files: Vec<DirEntry>, folders: Vec<DirEntry>, cfg: Config) -> Vec<Move> {
     let mut moves: Vec<Move> = Vec::new();
     let mut primary_media: Option<TMDBEntry> = None; // Assuming first file (biggest file) is primary media, store the information of this, for the rest, do lazy matching for extra content/subs and so on
@@ -140,6 +146,7 @@ pub fn handle_movie_files_and_folders(files: Vec<DirEntry>, folders: Vec<DirEntr
     moves
 }
 
+// Check files for movie, or if primary media has been marked as found for extras, show required inquire dialoges
 fn check_movie_file(file: PathBuf, primary_media: &mut Option<TMDBEntry>, cfg: &Config, moves: &mut Vec<Move>) {
     trace!("Checking {:#?}", file);
     match get_file_header(file.clone()) {
