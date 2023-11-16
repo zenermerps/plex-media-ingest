@@ -57,7 +57,7 @@ fn main() {
 
     // Set config path config to home folder, or if provided to specified file
     let config_path = if args.config.is_none() {
-        PathBuf::from(std::env::var("HOME").unwrap()).join(".plex-media-ingest").join("config.json")
+        PathBuf::from(home::home_dir().unwrap_or_default()).join(".plex-media-ingest").join("config.json")
     } else {
         args.config.unwrap()
     };
